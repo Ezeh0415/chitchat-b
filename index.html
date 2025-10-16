@@ -1,0 +1,69 @@
+<!DOCTYPE html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>Document</title>
+  </head>
+  <body>
+    <!-- import React, { useState } from "react";
+
+function ImageUploader() {
+  const [userImage, setUserImage] = useState(null);
+  const [previewUrl, setPreviewUrl] = useState(null);
+  const [email, setEmail] = useState("");
+
+  const handleImageChange = (e) => {
+    const file = e.target.files[0];
+    if (file) {
+      setUserImage(file); // Save file for upload
+      setPreviewUrl(URL.createObjectURL(file)); // Generate preview URL
+    }
+  };
+
+  const handleUpload = async () => {
+    const formData = new FormData();
+    formData.append("email", email);
+    formData.append("image", userImage);
+
+    try {
+      const response = await fetch(`${Base_Url}chit-chat/profile-img`, {
+        method: "POST",
+        body: formData,
+      });
+
+      const data = await response.json();
+      console.log("Upload successful:", data);
+      URL.revokeObjectURL(previewUrl);
+    } catch (err) {
+      console.error("Upload failed:", err);
+    }
+  };
+
+  return (
+    <div>
+      <input
+        type="email"
+        value={email}
+        onChange={(e) => setEmail(e.target.value)}
+        placeholder="Enter email"
+      />
+
+      <input type="file" accept="image/*" onChange={handleImageChange} />
+
+      {/* Preview the image */}
+      {previewUrl && (
+        <div>
+          <p>Preview:</p>
+          <img src={previewUrl} alt="Preview" width="200" />
+        </div>
+      )}
+
+      <button onClick={handleUpload}>Upload</button>
+    </div>
+  );
+} -->
+
+    <script src="script.js"></script>
+  </body>
+</html>
