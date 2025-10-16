@@ -156,7 +156,7 @@ const postDisplay = async (req, res) => {
   const { email, postId, notif_id } = req.body;
   const io = getIO();
 
-  if (!email || !notif_id || !postId) {
+  if (!email || !postId) {
     io?.emit(
       "postDisplay",
       "Emails and Post ID are required to display a post"
@@ -171,17 +171,19 @@ const postDisplay = async (req, res) => {
       .collection("posts")
       .findOne({ _id: new ObjectId(postId) });
 
-    await db.collection("users").updateOne(
-      {
-        email,
-        "notifications.notif_id": new ObjectId(notif_id),
-      },
-      {
-        $set: {
-          "notifications.$.read": true, // or any field you want to change
+    if (notif_id) {
+      await db.collection("users").updateOne(
+        {
+          email,
+          "notifications.notif_id": new ObjectId(notif_id),
         },
-      }
-    );
+        {
+          $set: {
+            "notifications.$.read": true, // or any field you want to change
+          },
+        }
+      );
+    }
 
     if (!post) {
       io?.emit("postDisplay", "post not found");
@@ -437,30 +439,17 @@ const CommentOnPost = async (req, res) => {
         "posts._id": new ObjectId(postId),
       },
       {
-        $push: {
-          "posts.$.comments": comment,
-        },
+        $addToSet: { "posts.$.comments": comment },
       }
     );
 
     // Update the global posts collection
-    await db.collection("posts").updateOne(
-      { email: PostEmail },
-      {
-        $addToSet: {
-          commented: {
-            email: commentedUser.email,
-            firstName: commentedUser.firstName,
-            lastName: commentedUser.lastName,
-            profileImage: commentedUser.profileImage,
-            commentText: trimmedComment,
-            createdAt: now,
-          },
-        },
-        $set: { isCommented: true },
-        $inc: { commentedCount: 1 },
-      }
-    );
+    await db
+      .collection("posts")
+      .updateOne(
+        { _id: new ObjectId(postId) },
+        { $addToSet: { comments: comment } }
+      );
 
     // Notify post owner
     await db.collection("users").updateOne(
@@ -468,6 +457,9 @@ const CommentOnPost = async (req, res) => {
       {
         $addToSet: {
           notifications: {
+            notif_id: new ObjectId(),
+            post_id: postId,
+            postOwnerEmail: userDoc.email,
             firstName: commentedUser.firstName,
             lastName: commentedUser.lastName,
             profileImage: commentedUser.profileImage,
