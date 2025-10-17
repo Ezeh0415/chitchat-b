@@ -85,6 +85,21 @@ const AddFriends = async (req, res) => {
       }
     );
 
+    await db.collection("users").updateOne(
+      { email: AdderEmail },
+      {
+        $addToSet: {
+          Notifications: {
+            firstName: adderUsers.firstName,
+            lastName: adderUsers.lastName,
+            profileImage: adderUsers.profileImage,
+            userDid: " you sent a friend request",
+            createdAt: new Date(),
+          },
+        },
+      }
+    );
+
     return res.status(200).json({
       message: "friend request sent successfully",
     });

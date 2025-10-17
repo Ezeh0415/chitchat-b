@@ -518,6 +518,7 @@ const activePosts = async (req, res) => {
             postText: 1,
             createdAt: 1,
             liked: 1,
+            comments: 1,
           },
         }
       )

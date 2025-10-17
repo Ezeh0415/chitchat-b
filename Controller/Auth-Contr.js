@@ -46,6 +46,8 @@ const signup = async (req, res) => {
     if (existingUser) {
       return handleError(res, null, "User already exists", 409);
     }
+
+ 
     const otp = generateNumericOTP();
     const pwdHash = await bcrypt.hash(password, saltRounds);
     const otpHash = await bcrypt.hash(otp, saltRounds);
@@ -304,7 +306,7 @@ const getProfile = async (req, res) => {
         email: user.email,
         profileImage: user.profileImage,
         posts: user.posts,
-        notifications:user.notifications,
+        notifications: user.notifications,
       },
     });
   } catch (error) {
