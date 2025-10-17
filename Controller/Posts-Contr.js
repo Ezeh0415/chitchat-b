@@ -384,6 +384,8 @@ const CommentOnPost = async (req, res) => {
     );
   }
 
+  console.log(PostEmail, postId, commentedUser, commentText);
+
   try {
     const db = getDB();
 
@@ -392,11 +394,21 @@ const CommentOnPost = async (req, res) => {
       "posts._id": new ObjectId(postId),
     });
 
-    if (!userDoc) {
+    const commnterEmail = await db.collection("users").findOne({
+      email: commentedUser,
+    });
+    // console.log(commnterEmail);
+
+    if (!userDoc || !commnterEmail) {
       return handleError(res, null, "Post not found", 404);
     }
 
-    const post = userDoc.posts.find((p) => p._id.toString() === postId);
+    const post = userDoc.posts.find(
+      (post) => post._id && post._id.toString() === postId
+    );
+
+    // console.log(post);
+
     if (!post) {
       return handleError(res, null, "Post not found in user's posts", 404);
     }
@@ -424,10 +436,10 @@ const CommentOnPost = async (req, res) => {
 
     const comment = {
       _id: new ObjectId(),
-      firstName: commentedUser.firstName,
-      lastName: commentedUser.lastName,
-      email: commentedUser.email,
-      profileImage: commentedUser.profileImage,
+      firstName: commnterEmail.firstName,
+      lastName: commnterEmail.lastName,
+      email: commnterEmail.email,
+      profileImage: commnterEmail.profileImage,
       commentText: trimmedComment,
       createdAt: now,
     };
@@ -460,10 +472,11 @@ const CommentOnPost = async (req, res) => {
             notif_id: new ObjectId(),
             post_id: postId,
             postOwnerEmail: userDoc.email,
-            firstName: commentedUser.firstName,
-            lastName: commentedUser.lastName,
-            profileImage: commentedUser.profileImage,
+            firstName: commnterEmail.firstName,
+            lastName: commnterEmail.lastName,
+            profileImage: commnterEmail.profileImage,
             postId: postId,
+            title: post.title,
             userDid: "commented on your post",
             createdAt: now,
           },
