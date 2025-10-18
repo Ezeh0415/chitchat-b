@@ -42,6 +42,8 @@ const AddFriends = async (req, res) => {
     return handleError(res, null, "email must not be empty", 400);
   }
 
+  console.log(AdderEmail, ReciverEmail);
+
   try {
     const db = getDB();
 
@@ -74,12 +76,13 @@ const AddFriends = async (req, res) => {
       { email: ReciverEmail },
       {
         $addToSet: {
-          Notifications: {
+          FriendRequestsNotifications: {
             firstName: adderUsers.firstName,
             lastName: adderUsers.lastName,
             profileImage: adderUsers.profileImage,
             userDid: "sent you a friend request",
             createdAt: new Date(),
+            read: false,
           },
         },
       }
@@ -89,12 +92,13 @@ const AddFriends = async (req, res) => {
       { email: AdderEmail },
       {
         $addToSet: {
-          Notifications: {
+          FriendRequestsNotifications: {
             firstName: adderUsers.firstName,
             lastName: adderUsers.lastName,
             profileImage: adderUsers.profileImage,
             userDid: " you sent a friend request",
             createdAt: new Date(),
+            read: false,
           },
         },
       }

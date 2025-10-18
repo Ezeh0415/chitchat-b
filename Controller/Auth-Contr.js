@@ -47,7 +47,6 @@ const signup = async (req, res) => {
       return handleError(res, null, "User already exists", 409);
     }
 
- 
     const otp = generateNumericOTP();
     const pwdHash = await bcrypt.hash(password, saltRounds);
     const otpHash = await bcrypt.hash(otp, saltRounds);
@@ -61,6 +60,7 @@ const signup = async (req, res) => {
       otp: otpHash,
       otpExpire: new Date(now.getTime() + 10 * 60 * 1000),
       createdAt: new Date(), // 10 minutes
+      profileImage: "https://cdn-icons-png.flaticon.com/512/149/149071.png",
     };
     const result = await db.collection("users").insertOne(user);
 
@@ -296,7 +296,6 @@ const getProfile = async (req, res) => {
   try {
     const db = getDB();
     const user = await db.collection("users").findOne({ email });
-
     res.status(200).json({
       success: true,
       user: {
@@ -307,6 +306,8 @@ const getProfile = async (req, res) => {
         profileImage: user.profileImage,
         posts: user.posts,
         notifications: user.notifications,
+        FriendRequestsNotifications: user.FriendRequestsNotifications,
+        createdAt: user.createdAt,
       },
     });
   } catch (error) {
