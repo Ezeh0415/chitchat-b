@@ -307,6 +307,8 @@ const getProfile = async (req, res) => {
         posts: user.posts,
         notifications: user.notifications,
         FriendRequestsNotifications: user.FriendRequestsNotifications,
+        FriendRequest: user.FriendRequest,
+        Friends: user.Friends,
         createdAt: user.createdAt,
       },
     });
