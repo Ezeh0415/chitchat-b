@@ -201,6 +201,45 @@ const postDisplay = async (req, res) => {
     );
   }
 };
+
+const notifclear = async (req, res) => {
+  const { email, notif_id } = req.body;
+
+  console.log(email, notif_id);
+
+  if (!email || !notif_id) {
+    return handleError(
+      res,
+      null,
+      "Email and Notification ID are required",
+      400
+    );
+  }
+  try {
+    const db = getDB();
+    await db.collection("users").updateOne(
+      {
+        email,
+        "FriendRequestsNotifications._id": new ObjectId(notif_id),
+      },
+      {
+        $set: {
+          "FriendRequestsNotifications.$.read": true, // or any field you want to change
+        },
+      }
+    );
+    return res.status(200).json({ message: "Notification marked as read" });
+  } catch (error) {
+    console.error("Notification update unsuccessful:", error);
+    return handleError(
+      res,
+      error,
+      "Failed to update notification. Try again.",
+      500
+    );
+  }
+};
+
 const LikedPosts = async (req, res) => {
   const { posterEmail, likerId, postId } = req.body;
   const io = getIO();
@@ -384,8 +423,6 @@ const CommentOnPost = async (req, res) => {
     );
   }
 
-  console.log(PostEmail, postId, commentedUser, commentText);
-
   try {
     const db = getDB();
 
@@ -543,4 +580,5 @@ module.exports = {
   LikedPosts,
   CommentOnPost,
   postDisplay,
+  notifclear,
 };

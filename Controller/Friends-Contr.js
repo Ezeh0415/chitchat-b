@@ -42,8 +42,6 @@ const AddFriends = async (req, res) => {
     return handleError(res, null, "email must not be empty", 400);
   }
 
-  console.log(AdderEmail, ReciverEmail);
-
   try {
     const db = getDB();
 
@@ -155,127 +153,133 @@ const AcceptFriendRequests = async (req, res) => {
   const { usersEmail, ReciverEmail } = req.body;
   const requestId = req.params.id;
 
-  console.log("usersEmail:", usersEmail);
-  console.log("ReciverEmail:", ReciverEmail);
-  console.log("requestId:", typeof requestId);
-  console.log("requestId value:", requestId.length);
-  // console.log("isValidId:", new ObjectId(requestId));
-
   if (!usersEmail || !ReciverEmail || !ObjectId.isValid(requestId)) {
     return handleError(res, null, "Email(s) or ID must be valid", 400);
   }
 
-  // try {
-  //   const db = getDB();
-  //   const friendsRequest = await db
-  //     .collection("users")
-  //     .findOne({ _id: new ObjectId(requestId) });
+  console.log(requestId);
 
-  //   const userEmail = await db
-  //     .collection("users")
-  //     .findOne({ email: usersEmail });
+  const requestObjectId = new ObjectId(requestId);
 
-  //   if (!friendsRequest || !userEmail) {
-  //     return handleError(
-  //       res,
-  //       null,
-  //       "could not fetch the friend request from the database",
-  //       500
-  //     );
-  //   }
-  //   const id = new ObjectId();
+  try {
+    const db = getDB();
+    const friendsRequest = await db
+      .collection("users")
+      .findOne({ email: ReciverEmail });
 
-  //   await db.collection("users").updateOne(
-  //     { email: usersEmail },
-  //     {
-  //       $addToSet: {
-  //         Friends: {
-  //           _id: id,
-  //           email: friendsRequest.email,
-  //           firstName: friendsRequest.firstName,
-  //           lastName: friendsRequest.lastName,
-  //           profileImage: friendsRequest.profileImage,
-  //           createdAt: new Date(),
-  //         },
-  //       },
-  //     }
-  //   );
+    const userEmail = await db
+      .collection("users")
+      .findOne({ email: usersEmail, "FriendRequest._id": requestObjectId });
 
-  //   await db.collection("users").updateOne(
-  //     { email: ReciverEmail },
-  //     {
-  //       $addToSet: {
-  //         Friends: {
-  //           _id: id,
-  //           email: userEmail.email,
-  //           firstName: userEmail.firstName,
-  //           lastName: userEmail.lastName,
-  //           profileImage: userEmail.profileImage,
-  //           createdAt: new Date(),
-  //         },
-  //       },
-  //     }
-  //   );
+    if (!friendsRequest || !userEmail) {
+      return handleError(
+        res,
+        null,
+        "could not fetch the friend request from the database",
+        500
+      );
+    }
+    const id = new ObjectId();
 
-  //   await db.collection("users").updateOne(
-  //     { email: usersEmail },
-  //     {
-  //       $addToSet: {
-  //         FriendRequestsNotifications: {
-  //           _id: id,
-  //           email: friendsRequest.email,
-  //           firstName: friendsRequest.firstName,
-  //           lastName: friendsRequest.lastName,
-  //           profileImage: friendsRequest.profileImage,
-  //           userDid: " accepted your friend request",
-  //           createdAt: new Date(),
-  //           read: false,
-  //         },
-  //       },
-  //     }
-  //   );
+    await db.collection("users").updateOne(
+      { email: usersEmail },
+      {
+        $addToSet: {
+          Friends: {
+            _id: id,
+            email: friendsRequest.email,
+            firstName: friendsRequest.firstName,
+            lastName: friendsRequest.lastName,
+            profileImage: friendsRequest.profileImage,
+            createdAt: new Date(),
+          },
+        },
+      }
+    );
 
-  //   await db.collection("users").updateOne(
-  //     { email: ReciverEmail },
-  //     {
-  //       $addToSet: {
-  //         FriendRequestsNotifications: {
-  //           _id: id,
-  //           email: userEmail.email,
-  //           firstName: userEmail.firstName,
-  //           lastName: userEmail.lastName,
-  //           profileImage: userEmail.profileImage,
-  //           userDid: " accepted your friend request",
-  //           createdAt: new Date(),
-  //           read: false,
-  //         },
-  //       },
-  //     }
-  //   );
+    await db.collection("users").updateOne(
+      { email: ReciverEmail },
+      {
+        $addToSet: {
+          Friends: {
+            _id: id,
+            email: userEmail.email,
+            firstName: userEmail.firstName,
+            lastName: userEmail.lastName,
+            profileImage: userEmail.profileImage,
+            createdAt: new Date(),
+          },
+        },
+      }
+    );
 
-  //   await db.collection("users").findOneAndUpdate(
-  //     { email: usersEmail, "FriendRequestsNotifications._id": requestObjectId },
-  //     {
-  //       $set: { "FriendRequestsNotifications.$.read": true },
-  //     },
-  //     { returnDocument: "after" }
-  //   );
+    await db.collection("users").updateOne(
+      { email: usersEmail },
+      {
+        $addToSet: {
+          FriendRequestsNotifications: {
+            _id: id,
+            email: friendsRequest.email,
+            firstName: friendsRequest.firstName,
+            lastName: friendsRequest.lastName,
+            profileImage: friendsRequest.profileImage,
+            userDid: " accepted your friend request",
+            createdAt: new Date(),
+            read: false,
+          },
+        },
+      }
+    );
 
-  //   await db.collection("users").findOneAndUpdate(
-  //     {
-  //       email: ReciverEmail,
-  //       "FriendRequestsNotifications._id": requestObjectId,
-  //     },
-  //     {
-  //       $set: { "FriendRequestsNotifications.$.read": true },
-  //     },
-  //     { returnDocument: "after" }
-  //   );
+    await db.collection("users").updateOne(
+      { email: ReciverEmail },
+      {
+        $addToSet: {
+          FriendRequestsNotifications: {
+            _id: id,
+            email: userEmail.email,
+            firstName: userEmail.firstName,
+            lastName: userEmail.lastName,
+            profileImage: userEmail.profileImage,
+            userDid: " accepted your friend request",
+            createdAt: new Date(),
+            read: false,
+          },
+        },
+      }
+    );
 
-  //   res.status(200).json({ message: "friend request accepted " });
-  // } catch (error) {
-  //   handleError(res, error, "failed to accept friend request", 404);
-  // }
+    await db.collection("users").findOneAndUpdate(
+      { email: usersEmail, "FriendRequest._id": requestObjectId },
+      {
+        $pull: { FriendRequest: { _id: requestObjectId } },
+      },
+      { returnDocument: "after" }
+    );
+
+    await db.collection("users").findOneAndUpdate(
+      { email: usersEmail, "FriendRequestsNotifications._id": requestObjectId },
+      {
+        $set: { "FriendRequestsNotifications.$.read": true },
+      },
+      { returnDocument: "after" }
+    );
+
+    await db.collection("users").findOneAndUpdate(
+      {
+        email: ReciverEmail,
+        "FriendRequestsNotifications._id": requestObjectId,
+      },
+      {
+        $set: { "FriendRequestsNotifications.$.read": true },
+      },
+      { returnDocument: "after" }
+    );
+
+    res.status(200).json({ message: "friend request accepted " });
+  } catch (error) {
+    handleError(res, error, "failed to accept friend request", 404);
+  }
 };
 
 const DeleteFriendRequests = async (req, res) => {
