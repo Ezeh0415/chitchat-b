@@ -38,7 +38,7 @@ router.post("/api/commentedPost", postContr.CommentOnPost);
 router.post("/api/addFriends", FriendContr.AddFriends);
 router.post("/api/acceptFriendRequest/:id", FriendContr.AcceptFriendRequests);
 router.post("/api/clearNotifications", postContr.notifclear);
-
+router.post("/api/unfriend/:id", FriendContr.Unfriend);
 // get section
 router.get("/api/getUserProfile/:email", AuthContr.getProfile);
 router.get("/api/usersGetProfile/:email", AuthContr.usersGetProfile);

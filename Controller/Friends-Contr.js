@@ -282,6 +282,36 @@ const AcceptFriendRequests = async (req, res) => {
   }
 };
 
+const Unfriend = async (req, res) => {
+  const { userEmail, ReciverEmail } = req.body;
+  const friendId = req.params.id;
+  if (!userEmail || !ReciverEmail || !ObjectId.isValid(friendId)) {
+    return handleError(res, null, "Email(s) or ID must be valid", 400);
+  }
+  const friendObjectId = new ObjectId(friendId);
+
+  try {
+    const db = getDB();
+    await db.collection("users").findOneAndUpdate(
+      { email: userEmail, "Friends._id": friendObjectId },
+      {
+        $pull: { Friends: { _id: friendObjectId } },
+      },
+      { returnDocument: "after" }
+    );
+    await db
+      .collection("users")
+      .findOneAndUpdate(
+        { email: ReciverEmail, "Friends._id": friendObjectId },
+        { $pull: { Friends: { _id: friendObjectId } } },
+        { returnDocument: "after" }
+      );
+    res.status(200).json({ message: "Unfriended successfully " });
+  } catch (error) {
+    handleError(res, error, "failed to unfriend", 404);
+  }
+};
+
 const DeleteFriendRequests = async (req, res) => {
   const { email } = req.body;
   const requestId = req.params.id;
@@ -323,5 +353,6 @@ module.exports = {
   AddFriends,
   FriendRequests,
   AcceptFriendRequests,
+  Unfriend,
   DeleteFriendRequests,
 };

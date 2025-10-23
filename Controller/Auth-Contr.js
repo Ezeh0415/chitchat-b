@@ -334,6 +334,7 @@ const usersGetProfile = async (req, res) => {
         email: user.email,
         profileImage: user.profileImage,
         posts: user.posts,
+        Friends: user.Friends,
       },
     });
   } catch (error) {
