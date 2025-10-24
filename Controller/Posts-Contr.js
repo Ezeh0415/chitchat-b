@@ -205,8 +205,6 @@ const postDisplay = async (req, res) => {
 const notifclear = async (req, res) => {
   const { email, notif_id } = req.body;
 
-  console.log(email, notif_id);
-
   if (!email || !notif_id) {
     return handleError(
       res,

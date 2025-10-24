@@ -157,7 +157,7 @@ const AcceptFriendRequests = async (req, res) => {
     return handleError(res, null, "Email(s) or ID must be valid", 400);
   }
 
-  console.log(requestId);
+ 
 
   const requestObjectId = new ObjectId(requestId);
 

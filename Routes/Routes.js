@@ -5,6 +5,7 @@ const AuthContr = require("../Controller/Auth-Contr");
 const ProfileContr = require("../Controller/Profile-contr");
 const postContr = require("../Controller/Posts-contr");
 const FriendContr = require("../Controller/Friends-contr");
+const ChatContr = require("../Controller/Chat-Contr");
 
 const upload = multer({ dest: "uploads/" });
 
@@ -39,6 +40,7 @@ router.post("/api/addFriends", FriendContr.AddFriends);
 router.post("/api/acceptFriendRequest/:id", FriendContr.AcceptFriendRequests);
 router.post("/api/clearNotifications", postContr.notifclear);
 router.post("/api/unfriend/:id", FriendContr.Unfriend);
+router.post("/api/chatUser/:id", ChatContr.getChatUser);
 // get section
 router.get("/api/getUserProfile/:email", AuthContr.getProfile);
 router.get("/api/usersGetProfile/:email", AuthContr.usersGetProfile);
