@@ -1,11 +1,10 @@
 // socket.js
 let io = null;
 
-
 module.exports = {
-    init: (server) => {
-        const { Server } = require("socket.io");
-        const allowedOrigins = ["http://localhost:3000", "http://127.0.0.1:3000"];
+  init: (server) => {
+    const { Server } = require("socket.io");
+    const allowedOrigins = ["http://localhost:3000", "http://127.0.0.1:3000"];
     io = new Server(server, {
       cors: {
         origin: function (origin, callback) {
@@ -21,7 +20,21 @@ module.exports = {
     });
 
     io.on("connection", (socket) => {
-      console.log("Socket connected:", socket.id);
+      console.log("Client connected:", socket.id);
+
+      socket.on("joinRoom", (roomId) => {
+        socket.join(roomId);
+        console.log(`${socket.id} joined room ${roomId}`);
+      });
+
+      socket.on("leaveRoom", (roomId) => {
+        socket.leave(roomId);
+        console.log(`${socket.id} left room ${roomId}`);
+      });
+
+      socket.on("disconnect", () => {
+        console.log("Client disconnected:", socket.id);
+      });
     });
 
     return io;

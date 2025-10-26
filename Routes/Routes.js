@@ -41,6 +41,8 @@ router.post("/api/acceptFriendRequest/:id", FriendContr.AcceptFriendRequests);
 router.post("/api/clearNotifications", postContr.notifclear);
 router.post("/api/unfriend/:id", FriendContr.Unfriend);
 router.post("/api/chatUser/:id", ChatContr.getChatUser);
+router.post("/api/chat/:id", ChatContr.chat);
+router.post("/api/getChatMessages", ChatContr.getChatMessages);
 // get section
 router.get("/api/getUserProfile/:email", AuthContr.getProfile);
 router.get("/api/usersGetProfile/:email", AuthContr.usersGetProfile);
