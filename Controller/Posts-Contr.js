@@ -533,9 +533,15 @@ const activePosts = async (req, res) => {
   try {
     const db = getDB();
 
-    const postCount = await db.collection("posts").countDocuments();
-    const post = await db.collection("posts").find().toArray();
+    // Get page number and limit from query params (default: 1st page, 10 posts per page)
+    const page = parseInt(req.query.page) || 1;
+    const limit = parseInt(req.query.limit) || 10;
+    const skip = (page - 1) * limit;
 
+    // Get total count of posts
+    const postCount = await db.collection("posts").countDocuments();
+
+    // Fetch posts with pagination and sorting
     const posts = await db
       .collection("posts")
       .find(
@@ -558,12 +564,15 @@ const activePosts = async (req, res) => {
         }
       )
       .sort({ _id: -1 })
+      .skip(skip)
+      .limit(limit)
       .toArray();
 
     res.status(200).json({
       totalCount: postCount,
+      totalPages: Math.ceil(postCount / limit),
+      currentPage: page,
       data: posts,
-      objData: post,
     });
   } catch (error) {
     console.error("GET /api/posts error:", error);
