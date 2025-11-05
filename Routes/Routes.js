@@ -43,6 +43,11 @@ router.post("/api/unfriend/:id", FriendContr.Unfriend);
 router.post("/api/chatUser/:id", ChatContr.getChatUser);
 router.post("/api/chat/:id", ChatContr.chat);
 router.post("/api/getChatMessages", ChatContr.getChatMessages);
+router.post(
+  "/api/profileSetup",
+  upload.single("image"),
+  ProfileContr.profileSetup
+);
 // get section
 router.get("/api/getUserProfile/:email", AuthContr.getProfile);
 router.get("/api/usersGetProfile/:email", AuthContr.usersGetProfile);

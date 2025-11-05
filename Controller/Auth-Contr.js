@@ -4,6 +4,8 @@ const { handleError } = require("../Utils/ErrorHandler");
 const generateNumericOTP = require("../Utils/OtpGenerator");
 const generateTokens = require("../Utils/TokenGenerate");
 const { sendOtpEmail } = require("../Utils/Mailer");
+const { getClientIp } = require("../Utils/getClientIp");
+const ipinfo = require("ipinfo");
 
 const saltRounds = 10;
 
@@ -40,6 +42,14 @@ const signup = async (req, res) => {
     );
   }
 
+  // get users ip address
+  // Get IP
+  const ip = getClientIp(req);
+
+  // Optional: enrich with ipinfo (do not do for every request if rate-limited)
+  const token = process.env.IPINFO_TOKEN;
+  let geo = null;
+
   try {
     const db = getDB();
     const existingUser = await db.collection("users").findOne({ email });
@@ -52,6 +62,18 @@ const signup = async (req, res) => {
     const otpHash = await bcrypt.hash(otp, saltRounds);
     const now = new Date();
 
+    // geolocation
+
+    if (token) {
+      geo = await ipinfo(ip, token);
+    }
+
+    if (geo.bogon) {
+      console.log("Private IP detected (local/dev)");
+    } else {
+      console.log("User is from:", geo.city, geo.country);
+    }
+
     const user = {
       firstName,
       lastName,
@@ -61,6 +83,8 @@ const signup = async (req, res) => {
       otpExpire: new Date(now.getTime() + 10 * 60 * 1000),
       createdAt: new Date(), // 10 minutes
       profileImage: "https://cdn-icons-png.flaticon.com/512/149/149071.png",
+      city: geo?.city || null,
+      country: geo?.country || null,
     };
     const result = await db.collection("users").insertOne(user);
 
@@ -92,19 +116,52 @@ const signup = async (req, res) => {
       },
       accessToken,
     });
+    const timestamp = new Date().toISOString();
+    const deviceInfo = req.headers["user-agent"] || "Unknown Device";
 
-    const subject = `chitChat Account Verification Code`;
+    const subject = `chitChat Account ip address turn up`;
+
+    // Create the HTML email
     const message = `
-      <p>Dear ${newUser.firstName} ${newUser.lastName},</p>
-      <p>Your verification code is:</p>
-      <h2 style="color:#2c3e50;">${otp}</h2>
-      <p>Please enter this code within 5 minutes to verify your account.</p>
-      <p>If you did not request this, please disregard this email.</p>
-      <br/>
-      <p>Thank you for choosing <strong>chitChat</strong>.</p>
+    <html>
+    <body style="font-family:Helvetica,Arial,sans-serif;background:#f4f6f8;margin:0;padding:20px;">
+      <table align="center" width="600" style="background:#fff;border-radius:8px;overflow:hidden;">
+        <tr>
+          <td style="background:#2c3e50;color:#fff;padding:16px 24px;">
+            <h2 style="margin:0;">chitChat</h2>
+          </td>
+        </tr>
+        <tr>
+          <td style="padding:24px;">
+            <p>Dear ${newUser.firstName} ${newUser.lastName},</p>
+            <p>Your verification code is:</p>
+            <h2 style="color:#2c3e50;letter-spacing:4px;">${otp}</h2>
+            <p>Please enter this code within 5 minutes to verify your account.</p>
+
+            <hr style="border:none;border-top:1px dashed #ccc;margin:20px 0;"/>
+
+            <p style="font-size:14px;color:#555;">
+              <strong>Sign-in details</strong><br/>
+              IP Address: <code>${ip}</code><br/>
+              city: ${geo.city}<br/>
+              country: ${geo.country}<br/>
+              Device: ${deviceInfo}<br/>
+              Time: ${timestamp}
+            </p>
+
+            <p style="font-size:13px;color:#777;">
+              If you did not request this, please ignore this email or
+
+            </p>
+            <p>Thank you for choosing <strong>chitChat</strong>.</p>
+          </td>
+        </tr>
+      </table>
+    </body>
+    </html>
     `;
 
-    sendOtpEmail(email, subject, message).catch((error) =>
+    await sendOtpEmail(subject, message).catch((error) =>
       console.error("Error sending email:", error)
     );
   } catch (error) {
@@ -173,6 +230,7 @@ const login = async (req, res) => {
     });
   } catch (error) {
     handleError(res, error, "Error logging in user");
+    console.warn("ipinfo error", err.message);
   }
 };
 
@@ -310,6 +368,11 @@ const getProfile = async (req, res) => {
         FriendRequest: user.FriendRequest,
         Friends: user.Friends,
         createdAt: user.createdAt,
+        Bio: user.Bio,
+        Gender: user.Gender,
+        Dob: user.Dob,
+        city: user.city,
+        country: user.country,
       },
     });
   } catch (error) {
