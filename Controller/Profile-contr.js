@@ -79,20 +79,30 @@ const ProfileImage = async (req, res) => {
         { $set: { profileImage: uploadResult.secure_url } }
       );
 
-    // Update all embedded posts
-    await db
-      .collection("users")
-      .updateOne(
-        { email },
-        { $set: { "posts.$[].profileImage": uploadResult.secure_url } }
-      );
-
     // 2. Update profile image in all posts by this user
     await db
       .collection("posts")
       .updateMany(
         { email },
         { $set: { profileImage: uploadResult.secure_url } }
+      );
+    // update in all comments
+    await db.collection("posts").updateMany(
+      {}, // search all posts
+      {
+        $set: { "comments.$[comment].profileImage": uploadResult.secure_url },
+      },
+      {
+        arrayFilters: [{ "comment.email": email }],
+      }
+    );
+
+    // Update all embedded posts
+    await db
+      .collection("users")
+      .updateOne(
+        { email },
+        { $set: { "posts.$[].profileImage": uploadResult.secure_url } }
       );
 
     const io = getIO();
@@ -124,6 +134,124 @@ const ProfileImage = async (req, res) => {
   } catch (error) {
     console.error("Profile image upload error:", error);
     return handleError(res, error, "Failed to upload profile image", 500);
+  }
+};
+
+const profileSetup = async (req, res) => {
+  if (!req.body) {
+    return handleError(res, null, "No form data received", 500);
+  }
+  const { email, media, dob, gender, bio } = req.body;
+
+  if (!email || !media || !dob || !gender || !bio) {
+    return handleError(
+      res,
+      null,
+      "Email, media, dob, gender, and bio are required for upload",
+      400
+    );
+  }
+
+  try {
+    const db = getDB();
+    const user = await db.collection("users").findOne({ email });
+    if (!user) {
+      return handleError(res, null, "User not found", 404);
+    }
+
+    if (!media || typeof media !== "string" || !media.startsWith("data:")) {
+      return handleError(res, null, "Invalid media data", 400);
+    }
+
+    const matches = media.match(/^data:(image|video)\/[a-zA-Z0-9.+-]+;base64,/);
+
+    if (!matches) {
+      return handleError(
+        res,
+        null,
+        "Invalid media format — must be a base64 image or video",
+        400
+      );
+    }
+
+    const mimeType = matches[0].split(":")[1].split(";")[0]; // safely extract
+
+    const allowedType = [
+      // 📸 Common image formats
+      "image/jpeg",
+      "image/png",
+      "image/webp",
+      "image/jpg",
+      "image/avif",
+      "image/gif",
+      "image/heic",
+      "image/heif",
+      "image/bmp",
+      "image/tiff",
+      "image/x-icon", // .ico files
+      "image/svg+xml", // SVG vector files
+
+      // 🎥 Common video formats
+      "video/mp4",
+      "video/webm",
+      "video/ogg",
+      "video/quicktime", // .mov
+      "video/x-msvideo", // .avi
+      "video/x-matroska", // .mkv
+      "video/mpeg",
+      "video/3gpp",
+      "video/3gpp2",
+
+      // 🔊 Optional: if you ever want to allow short clips/audio
+      "audio/mpeg",
+      "audio/ogg",
+      "audio/mp3",
+      "audio/wav",
+    ];
+
+    if (!allowedType.includes(mimeType.toLowerCase())) {
+      return handleError(
+        res,
+        null,
+        "Only image and video files are allowed",
+        400
+      );
+    }
+
+    const uploadResult = await cloudinary.uploader.upload(media, {
+      folder: "profile_media",
+      resource_type: "auto",
+    });
+
+    let mediaType;
+
+    if (mimeType.startsWith("image")) {
+      mediaType = "image";
+    } else if (mimeType.startsWith("video")) {
+      mediaType = "video";
+    } else {
+      return res.status(400).json({ error: "Unsupported media type" });
+    }
+
+    // Update user's profile image URL in DB
+    await db.collection("users").updateOne(
+      { email },
+      {
+        $set: {
+          mediaType: mediaType,
+          profileImage: uploadResult.secure_url,
+          Dob: dob,
+          Gender: gender,
+          Bio: bio,
+        },
+      }
+    );
+
+    return res.status(200).json({
+      message: "Profile image uploaded successfully",
+    });
+  } catch (error) {
+    handleError(res, error, "Failed to upload profileSetup ", 500);
   }
 };
 
@@ -193,4 +321,5 @@ const CoverImage = async (req, res) => {
 module.exports = {
   ProfileImage,
   CoverImage,
+  profileSetup,
 };
