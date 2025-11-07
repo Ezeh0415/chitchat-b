@@ -2,26 +2,48 @@ const { ObjectId } = require("mongodb");
 const { getDB } = require("../Models/Db");
 const { handleError } = require("../Utils/ErrorHandler");
 const { getIO } = require("../Models/Socket");
+const client = require("../Models/Redis");
 
 const getChatUser = async (req, res) => {
   // Chat user retrieval logic here
   const { userEmail, chatEmail } = req.body;
   const requestId = req.params.id;
 
-  if (!userEmail || !chatEmail || ObjectId.isValid(!requestId)) {
+  if (!userEmail || !chatEmail || !ObjectId.isValid(requestId)) {
     return handleError(res, null, "Invalid input", 400);
   }
 
   try {
     const db = getDB();
+    const redisKey = `chat:user:${chatEmail}`;
 
-    await db.collection("users").findOne({ email: userEmail });
+    const cached = await client.json.get(redisKey);
+
+    if (cached) {
+      return res.status(200).json({
+        data: {
+          _id: requestId,
+          email: cached.email,
+          firstName: cached.firstName,
+          lastName: cached.lastName,
+          profileImage: cached.profileImage,
+        },
+      });
+    }
+
+    // await db.collection("users").findOne({ email: userEmail });
 
     const chatUser = await db.collection("users").findOne({ email: chatEmail });
 
     if (!chatUser) {
       return handleError(res, null, "Chat user not found", 404);
     }
+
+    const result = await client.json.set(redisKey, "$", chatUser, { NX: true });
+    if (result) {
+      await client.expire(redisKey, 3600);
+    }
+
     res.status(200).json({
       data: {
         _id: requestId,
@@ -51,6 +73,20 @@ const chat = async (req, res) => {
 
   try {
     const db = getDB();
+    const io = getIO();
+    const roomId = requestIdObj.toString();
+
+    const userChatMessage = {
+      _id: new ObjectId(),
+      from: userEmail,
+      to: chatEmail,
+      message: message,
+      timestamp: new Date(),
+    };
+    // Emit to room
+    io.to(roomId).emit("chatMessage", {
+      data: userChatMessage,
+    });
 
     const UserData = await db.collection("users").findOne({
       email: userEmail,
@@ -66,14 +102,6 @@ const chat = async (req, res) => {
       return handleError(res, null, "User or request not found", 404);
     }
 
-    const userChatMessage = {
-      _id: new ObjectId(),
-      from: userEmail,
-      to: chatEmail,
-      message: message,
-      timestamp: new Date(),
-    };
-
     // Push message to both users
     await db
       .collection("users")
@@ -88,13 +116,6 @@ const chat = async (req, res) => {
         { email: chatEmail, "Friends._id": requestIdObj },
         { $push: { "Friends.$.chats": userChatMessage } }
       );
-
-    // Emit to room
-    const io = getIO();
-    const roomId = requestIdObj.toString();
-    io.to(roomId).emit("chatMessage", {
-      data: userChatMessage,
-    });
 
     // Send response
     res
