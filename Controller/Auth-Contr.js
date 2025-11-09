@@ -6,6 +6,7 @@ const generateTokens = require("../Utils/TokenGenerate");
 const { sendOtpEmail } = require("../Utils/Mailer");
 const { getClientIp } = require("../Utils/getClientIp");
 const ipinfo = require("ipinfo");
+const client = require("../Models/Redis");
 
 const saltRounds = 10;
 
@@ -97,6 +98,19 @@ const signup = async (req, res) => {
       email: newUser.email,
     });
 
+    const RedisSet = await client.json.set(
+      `user:${newUser.email}`,
+      "$",
+      newUser,
+      { NX: true }
+    );
+
+    if (RedisSet === null) {
+      return handleError(res, null, "User already exists", 409);
+    }
+
+    await client.expire(`user.${newUser.email}`, 3600);
+
     res.cookie("refreshToken", refreshToken, {
       httpOnly: true,
       secure: true,
@@ -176,13 +190,11 @@ const login = async (req, res) => {
     return handleError(res, null, "Email and password are required", 400);
   }
 
-  // Email format validation
   const emailRegex = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
   if (!emailRegex.test(email)) {
     return handleError(res, null, "Invalid email format", 400);
   }
 
-  // Password length check (e.g., at least 8 characters)
   if (password.length < 8) {
     return handleError(
       res,
@@ -192,21 +204,62 @@ const login = async (req, res) => {
     );
   }
 
+  const redisKey = `user:${email}`;
+
   try {
     const db = getDB();
+
+    // Check cache
+    const cached = await client.json.get(redisKey);
+    if (cached) {
+      const isPwdValid = await bcrypt.compare(password, cached.password);
+      if (!isPwdValid) return handleError(res, null, "Invalid password", 400);
+
+      const { accessToken, refreshToken } = generateTokens({
+        id: cached._id,
+        email: cached.email,
+      });
+
+      res.cookie("refreshToken", refreshToken, {
+        httpOnly: true,
+        secure: true,
+        sameSite: "Strict",
+        maxAge: 7 * 24 * 60 * 60 * 1000,
+      });
+
+      return res.status(200).json({
+        success: true,
+        message: "Login successful (from cache)",
+        user: {
+          _id: cached._id,
+          firstName: cached.firstName,
+          lastName: cached.lastName,
+          email: cached.email,
+          profileImage: cached.profileImage,
+        },
+        accessToken,
+      });
+    }
+
+    // Check database
     const existingUser = await db.collection("users").findOne({ email });
     if (!existingUser) {
-      return handleError(res, null, "user not found ", 400);
+      return handleError(res, null, "User not found", 400);
     }
+
     const isPwdValid = await bcrypt.compare(password, existingUser.password);
     if (!isPwdValid) {
-      return handleError(res, null, "password is not correct try again", 400);
+      return handleError(res, null, "Incorrect password", 400);
     }
 
     const { accessToken, refreshToken } = generateTokens({
       id: existingUser._id,
       email: existingUser.email,
     });
+
+    // Cache user data (non-sensitive)
+    await client.json.set(redisKey, "$", existingUser, { NX: true });
+    await client.expire(redisKey, 3600);
 
     res.cookie("refreshToken", refreshToken, {
       httpOnly: true,
@@ -215,8 +268,7 @@ const login = async (req, res) => {
       maxAge: 7 * 24 * 60 * 60 * 1000,
     });
 
-    // Send accessToken in the response body
-    res.status(200).json({
+    return res.status(200).json({
       success: true,
       message: "Login successful",
       user: {
@@ -229,8 +281,8 @@ const login = async (req, res) => {
       accessToken,
     });
   } catch (error) {
-    handleError(res, error, "Error logging in user");
-    console.warn("ipinfo error", err.message);
+    console.warn("Login error:", error.message);
+    return handleError(res, error, "Error logging in user");
   }
 };
 
@@ -353,7 +405,37 @@ const getProfile = async (req, res) => {
   }
   try {
     const db = getDB();
+
+    const redisKey = `GetUser:${email}`;
+    const cached = await client.json.get(redisKey);
+    if (cached) {
+      return res.status(200).json({
+        success: true,
+        user: {
+          id: cached._id,
+          firstName: cached.firstName,
+          lastName: cached.lastName,
+          email: cached.email,
+          profileImage: cached.profileImage,
+          posts: cached.posts,
+          notifications: cached.notifications,
+          FriendRequestsNotifications: cached.FriendRequestsNotifications,
+          FriendRequest: cached.FriendRequest,
+          Friends: cached.Friends,
+          createdAt: cached.createdAt,
+          Bio: cached.Bio,
+          Gender: cached.Gender,
+          Dob: cached.Dob,
+          city: cached.city,
+          country: cached.country,
+        },
+      });
+    }
+
     const user = await db.collection("users").findOne({ email });
+
+    await client.json.set(redisKey, "$", user, { NX: true });
+    await client.expire(redisKey, 5);
     res.status(200).json({
       success: true,
       user: {
@@ -386,7 +468,27 @@ const usersGetProfile = async (req, res) => {
   }
   try {
     const db = getDB();
+
+    const redisKey = `UsersProfiles:${email}`;
+    const cached = await client.json.get(redisKey);
+    if (cached) {
+      return res.status(200).json({
+        success: true,
+        user: {
+          id: cached._id,
+          firstName: cached.firstName,
+          lastName: cached.lastName,
+          email: cached.email,
+          profileImage: cached.profileImage,
+          posts: cached.posts,
+          Friends: cached.Friends,
+        },
+      });
+    }
     const user = await db.collection("users").findOne({ email });
+
+    await client.json.set(redisKey, "$", user, { NX: true });
+    await client.expire(redisKey, 3600);
 
     res.status(200).json({
       success: true,
