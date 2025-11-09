@@ -435,7 +435,7 @@ const getProfile = async (req, res) => {
     const user = await db.collection("users").findOne({ email });
 
     await client.json.set(redisKey, "$", user, { NX: true });
-    await client.expire(redisKey, 3600);
+    await client.expire(redisKey, 5);
     res.status(200).json({
       success: true,
       user: {

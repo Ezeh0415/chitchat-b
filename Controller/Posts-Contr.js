@@ -2,12 +2,13 @@ const { ObjectId } = require("mongodb");
 const { getDB } = require("../Models/Db");
 const { handleError } = require("../Utils/ErrorHandler");
 const cloudinary = require("../Utils/Cloudinary");
-const { getIO } = require("../Models/Socket"); // Import io from server.js
+const { getIO } = require("../Models/Socket");
+const client = require("../Models/Redis"); // Import io from server.js
 
 const PostWithImage = async (req, res) => {
   const { email, title, postText, media } = req.body;
 
-  if (!email) {
+  if (!email || !title) {
     return handleError(
       res,
       null,
@@ -16,25 +17,33 @@ const PostWithImage = async (req, res) => {
     );
   }
 
-  if (media) {
-    try {
-      const db = getDB();
-      const user = await db.collection("users").findOne({ email });
+  try {
+    const db = getDB();
+    const userCacheKey = `user:${email}`;
+
+    // Try to get user from Redis first
+    let user = await client.json.get(userCacheKey);
+
+    if (!user) {
+      user = await db.collection("users").findOne({ email });
       if (!user) {
         return handleError(res, null, "User not found", 404);
       }
+      // Cache user data
+      await client.json.set(userCacheKey, "$", user);
+      await client.expire(userCacheKey, 3600); // 1 hour TTL
+    }
 
-      if (!media) {
-        return handleError(res, null, "no media provided", 404);
-      }
+    const postId = new ObjectId();
+    const now = new Date();
 
+    if (media) {
       const matches = media.match(/^data:(.*);base64,/);
       if (!matches || matches.length !== 2) {
         return handleError(res, null, "Invalid media format", 400);
       }
 
       const mimeType = matches[1];
-
       const allowedType = [
         "image/jpeg",
         "image/png",
@@ -59,63 +68,15 @@ const PostWithImage = async (req, res) => {
         resource_type: "auto",
       });
 
-      let mediaType;
+      const mediaType = mimeType.startsWith("image")
+        ? "image"
+        : mimeType.startsWith("video")
+        ? "video"
+        : null;
 
-      if (mimeType.startsWith("image")) {
-        mediaType = "image";
-      } else if (mimeType.startsWith("video")) {
-        mediaType = "video";
-      } else {
-        return res.status(400).json({ error: "Unsupported media type" });
+      if (!mediaType) {
+        return handleError(res, null, "Unsupported media type", 400);
       }
-
-      const postId = new ObjectId();
-
-      const UserPost = {
-        _id: postId,
-        firstName: user.firstName,
-        lastName: user.lastName,
-        email: user.email,
-        profileImage: user.profileImage,
-        mediaUrl: uploadResult.secure_url,
-        mediaType: mediaType,
-        title: title,
-        postText: postText,
-        liked: [],
-        comments: [],
-        createdAt: new Date(),
-      };
-
-      await db.collection("users").updateOne(
-        { email },
-        {
-          $addToSet: {
-            posts: UserPost,
-          },
-        },
-        { returnDocument: "after" }
-      );
-
-      await db.collection("posts").insertOne(UserPost);
-
-      return res.status(200).json({
-        message: "Media uploaded successfully",
-        mediaType: mediaType,
-        mediaUrl: uploadResult.secure_url,
-      });
-    } catch (error) {
-      console.error("Profile media upload error:", error);
-      return handleError(res, error, "Failed to upload media", 500);
-    }
-  } else {
-    try {
-      const db = getDB();
-      const user = await db.collection("users").findOne({ email });
-      if (!user) {
-        return handleError(res, null, "User not found", 404);
-      }
-
-      const postId = new ObjectId();
 
       const userPost = {
         _id: postId,
@@ -123,32 +84,77 @@ const PostWithImage = async (req, res) => {
         lastName: user.lastName,
         email: user.email,
         profileImage: user.profileImage,
-        title: title,
-        postText: postText,
+        mediaUrl: uploadResult.secure_url,
+        mediaType,
+        title,
+        postText,
         liked: [],
         comments: [],
-        createdAt: new Date(),
+        createdAt: now,
       };
 
-      await db.collection("users").updateOne(
-        { email },
-        {
-          $addToSet: {
-            posts: userPost,
-          },
-        },
-        { returnDocument: "after" }
-      );
+      // Update MongoDB
+      const [userUpdate, globalPost] = await Promise.all([
+        db
+          .collection("users")
+          .updateOne({ email }, { $addToSet: { posts: userPost } }),
+        db.collection("posts").insertOne(userPost),
+      ]);
 
-      await db.collection("posts").insertOne(userPost);
+      // Invalidate relevant Redis cache
+      const cacheKeys = [
+        `user:${email}:posts`,
+        `posts:recent`,
+        `posts:page:1:limit:10`, // Assuming this is your default pagination
+      ];
+
+      await Promise.all(cacheKeys.map((key) => client.del(key)));
 
       return res.status(200).json({
         message: "Media uploaded successfully",
+        mediaType,
+        mediaUrl: uploadResult.secure_url,
+        postId: postId.toString(),
       });
-    } catch (error) {
-      console.error("post upload error:", error);
-      return handleError(res, error, "Failed to upload post", 500);
+    } else {
+      const userPost = {
+        _id: postId,
+        firstName: user.firstName,
+        lastName: user.lastName,
+        email: user.email,
+        profileImage: user.profileImage,
+        title,
+        postText,
+        liked: [],
+        comments: [],
+        createdAt: now,
+      };
+
+      // Update MongoDB
+      const [userUpdate, globalPost] = await Promise.all([
+        db
+          .collection("users")
+          .updateOne({ email }, { $addToSet: { posts: userPost } }),
+        db.collection("posts").insertOne(userPost),
+      ]);
+
+      // Invalidate relevant Redis cache
+      const cacheKeys = [
+        `user:${email}:posts`,
+        `posts:recent`,
+        `posts:page:1:limit:10`,
+      ];
+
+      await Promise.all(cacheKeys.map((key) => client.del(key)));
+
+      return res.status(200).json({
+        message: "Post created successfully",
+        postId: postId.toString(),
+      });
     }
+  } catch (error) {
+    console.error("❌ Post creation error:", error);
+    return handleError(res, error, "Failed to create post", 500);
   }
 };
 
@@ -156,76 +162,119 @@ const postDisplay = async (req, res) => {
   const { email, postId, notif_id } = req.body;
   const io = getIO();
 
-  if (!email || !postId) {
-    io?.emit(
-      "postDisplay",
-      "Emails and Post ID are required to display a post"
+  if (!email || !postId || !ObjectId.isValid(postId)) {
+    io?.emit("postDisplay", "Valid email and post ID are required");
+    return handleError(
+      res,
+      null,
+      "Required fields are missing or invalid",
+      400
     );
-    return handleError(res, null, "Required fields are missing", 400);
   }
 
   try {
     const db = getDB();
+    const postCacheKey = `post:${postId}`;
 
-    const post = await db
-      .collection("posts")
-      .findOne({ _id: new ObjectId(postId) });
+    // Try to get post from Redis first
+    let post = await client.json.get(postCacheKey);
+    let fromCache = false;
 
-    if (notif_id) {
-      await db.collection("users").updateOne(
+    if (post) {
+      fromCache = true;
+    } else {
+      // Get from MongoDB if not in cache
+      post = await db.collection("posts").findOne({
+        _id: new ObjectId(postId),
+      });
+
+      if (post) {
+        // Cache the post for future requests
+        await client.json.set(postCacheKey, "$", post);
+        await client.expire(postCacheKey, 3600); // 1 hour TTL
+      }
+    }
+
+    // Handle notification update if needed
+    if (notif_id && ObjectId.isValid(notif_id)) {
+      const notifUpdate = await db.collection("users").updateOne(
         {
           email,
           "notifications.notif_id": new ObjectId(notif_id),
         },
         {
           $set: {
-            "notifications.$.read": true, // or any field you want to change
+            "notifications.$.read": true,
           },
         }
       );
+
+      if (notifUpdate.modifiedCount === 0) {
+        console.warn(`⚠️ No notification updated for ID: ${notif_id}`);
+      }
     }
 
     if (!post) {
-      io?.emit("postDisplay", "post not found");
-      return handleError(res, null, "post not found", 404);
+      io?.emit("postDisplay", "Post not found");
+      return handleError(res, null, "Post not found", 404);
     }
 
-    return res.status(200).json({ post: post });
+    return res.status(200).json({
+      post,
+      source: fromCache ? "cache" : "database",
+    });
   } catch (error) {
-    console.error("post display unSuccessfull:", error);
+    console.error("❌ Post display error:", error);
     return handleError(
       res,
       error,
-      "Failed to display post / update notification. Try again.",
+      "Failed to display post / update notification",
       500
     );
   }
 };
-
+// ...existing code...
 const notifclear = async (req, res) => {
   const { email, notif_id } = req.body;
 
-  if (!email || !notif_id) {
+  if (!email || !notif_id || !ObjectId.isValid(notif_id)) {
     return handleError(
       res,
       null,
-      "Email and Notification ID are required",
+      "Email and valid Notification ID are required",
       400
     );
   }
+
+  const notifObjectId = new ObjectId(notif_id);
+
   try {
     const db = getDB();
-    await db.collection("users").updateOne(
+    const userRedisKey = `user:${email}`;
+    const notificationRedisKey = `notification:${notif_id}`;
+
+    const result = await db.collection("users").updateOne(
       {
         email,
-        "FriendRequestsNotifications._id": new ObjectId(notif_id),
+        "FriendRequestsNotifications._id": notifObjectId,
       },
       {
         $set: {
-          "FriendRequestsNotifications.$.read": true, // or any field you want to change
+          "FriendRequestsNotifications.$.read": true,
         },
       }
     );
+
+    if (result.modifiedCount === 0) {
+      return handleError(res, null, "Notification not found", 404);
+    }
+
+    // Invalidate related Redis cache (do in parallel)
+    await Promise.all([
+      client.del(userRedisKey),
+      client.del(notificationRedisKey),
+    ]);
+
     return res.status(200).json({ message: "Notification marked as read" });
   } catch (error) {
     console.error("Notification update unsuccessful:", error);
@@ -237,6 +286,10 @@ const notifclear = async (req, res) => {
     );
   }
 };
+// ...existing code...
+
+const cacheUserKey = (email) => `user:${email}`;
+const cachePostKey = (postId) => `post:${postId}`;
 
 const LikedPosts = async (req, res) => {
   const { posterEmail, likerId, postId } = req.body;
@@ -249,17 +302,28 @@ const LikedPosts = async (req, res) => {
 
   try {
     const db = getDB();
+    const likerKey = cacheUserKey(likerId);
+    const posterKey = cacheUserKey(posterEmail);
+    const postKey = cachePostKey(postId);
 
-    const likedUser = await db
-      .collection("users")
-      .findOne({ _id: new ObjectId(likerId) });
-    const posterUser = await db
-      .collection("users")
-      .findOne({ email: posterEmail });
+    // Fetch liker
+    let likedUser = await client.json.get(likerKey);
+    if (!likedUser) {
+      likedUser = await db
+        .collection("users")
+        .findOne({ _id: new ObjectId(likerId) });
+      if (!likedUser) return handleError(res, null, "Liker not found", 404);
+      await client.json.set(likerKey, "$", likedUser);
+      await client.expire(likerKey, 600);
+    }
 
-    if (!posterUser || !likedUser) {
-      io?.emit("likedError", "Users not found");
-      return handleError(res, null, "Users not found", 404);
+    // Fetch poster with posts
+    let posterUser = await client.json.get(posterKey);
+    if (!posterUser) {
+      posterUser = await db.collection("users").findOne({ email: posterEmail });
+      if (!posterUser) return handleError(res, null, "Poster not found", 404);
+      await client.json.set(posterKey, "$", posterUser);
+      await client.expire(posterKey, 600);
     }
 
     if (posterEmail === likedUser.email) {
@@ -267,30 +331,27 @@ const LikedPosts = async (req, res) => {
       return handleError(res, null, "You cannot like your own post", 409);
     }
 
-    const id = new ObjectId();
+    const now = new Date();
+    const likeId = new ObjectId();
 
     const liked = {
-      _id: id,
+      _id: likeId,
       postOwnerEmail: posterUser.email,
       likedByEmail: likedUser.email,
       likedByFirstName: likedUser.firstName,
       likedByLastName: likedUser.lastName,
       profileImage: likedUser.profileImage,
-      createdAt: new Date(),
+      createdAt: now,
     };
 
-    // Update likes in poster's user posts
-    await db.collection("users").updateOne(
-      {
-        email: posterEmail,
-        "posts._id": new ObjectId(postId),
-      },
-      {
-        $addToSet: { "posts.$.liked": liked },
-      }
-    );
+    // Update in DB
+    await db
+      .collection("users")
+      .updateOne(
+        { email: posterEmail, "posts._id": new ObjectId(postId) },
+        { $addToSet: { "posts.$.liked": liked } }
+      );
 
-    //     // // Optional: if you also store posts in a separate collection
     await db
       .collection("posts")
       .updateOne(
@@ -298,29 +359,42 @@ const LikedPosts = async (req, res) => {
         { $addToSet: { liked: liked } }
       );
 
-    const post = posterUser.posts.find(
-      (post) => post._id && post._id.toString() === postId
-    );
-
-    await db.collection("users").updateOne(
-      { email: posterEmail },
-      {
-        $addToSet: {
-          notifications: {
-            notif_id: new ObjectId(),
-            post_id: postId,
-            postOwnerEmail: posterUser.email,
-            firstName: likedUser.firstName,
-            lastName: likedUser.lastName,
-            profileImage: likedUser.profileImage,
-            title: post.title,
-            userDid: "liked this post",
-            read: false,
-            createdAt: new Date(),
-          },
-        },
+    // Update posterUser cache dependently
+    posterUser.posts = posterUser.posts.map((post) => {
+      if (post._id.toString() === postId) {
+        post.liked = post.liked || [];
+        // avoid duplicate like
+        if (!post.liked.find((l) => l.likedByEmail === likedUser.email)) {
+          post.liked.push(liked);
+        }
       }
-    );
+      return post;
+    });
+    await client.json.set(posterKey, "$", posterUser);
+    await client.expire(posterKey, 600);
+
+    const post = posterUser.posts.find((p) => p._id.toString() === postId);
+
+    // Add notification
+    const notification = {
+      notif_id: new ObjectId(),
+      post_id: postId,
+      postOwnerEmail: posterUser.email,
+      firstName: likedUser.firstName,
+      lastName: likedUser.lastName,
+      profileImage: likedUser.profileImage,
+      title: post?.title || "",
+      userDid: "liked this post",
+      read: false,
+      createdAt: now,
+    };
+
+    await db
+      .collection("users")
+      .updateOne(
+        { email: posterEmail },
+        { $addToSet: { notifications: notification } }
+      );
 
     io?.emit("postLiked", {
       postId,
@@ -328,7 +402,7 @@ const LikedPosts = async (req, res) => {
       postOwner: posterUser.email,
     });
 
-    return res.status(200).json({ message: "Liked successfully" });
+    return res.status(200).json({ message: "Liked successfully", post });
   } catch (error) {
     console.error("Like unsuccessful:", error);
     return handleError(res, error, "Failed to like post. Try again.", 500);
@@ -351,39 +425,55 @@ const UnlikePost = async (req, res) => {
 
   try {
     const db = getDB();
+    const likerKey = cacheUserKey(likerId);
+    const posterKey = cacheUserKey(posterEmail);
+    const postKey = cachePostKey(postId);
 
-    const likedUser = await db
-      .collection("users")
-      .findOne({ _id: new ObjectId(likerId) });
-    const posterUser = await db
-      .collection("users")
-      .findOne({ email: posterEmail });
-
-    if (!posterUser || !likedUser) {
-      io?.emit("unlikeError", "Users not found");
-      return handleError(res, null, "Users not found", 404);
+    // Fetch liker
+    let likedUser = await client.json.get(likerKey);
+    if (!likedUser) {
+      likedUser = await db
+        .collection("users")
+        .findOne({ _id: new ObjectId(likerId) });
+      if (!likedUser) return handleError(res, null, "Liker not found", 404);
+      await client.json.set(likerKey, "$", likedUser);
+      await client.expire(likerKey, 600);
     }
 
-    // Remove like from poster's posts array
-    await db.collection("users").updateOne(
-      {
-        email: posterEmail,
-        "posts._id": new ObjectId(postId),
-      },
-      {
-        $pull: {
-          "posts.$.liked": { likedByEmail: likedUser.email },
-        },
-      }
-    );
+    // Fetch poster with posts
+    let posterUser = await client.json.get(posterKey);
+    if (!posterUser) {
+      posterUser = await db.collection("users").findOne({ email: posterEmail });
+      if (!posterUser) return handleError(res, null, "Poster not found", 404);
+      await client.json.set(posterKey, "$", posterUser);
+      await client.expire(posterKey, 600);
+    }
 
-    // Remove like from posts collection
-    await db.collection("posts").updateOne(
-      { _id: new ObjectId(postId) },
-      {
-        $pull: { liked: { likedByEmail: likedUser.email } },
+    // Remove like in DB
+    await db
+      .collection("users")
+      .updateOne(
+        { email: posterEmail, "posts._id": new ObjectId(postId) },
+        { $pull: { "posts.$.liked": { likedByEmail: likedUser.email } } }
+      );
+
+    await db
+      .collection("posts")
+      .updateOne(
+        { _id: new ObjectId(postId) },
+        { $pull: { liked: { likedByEmail: likedUser.email } } }
+      );
+
+    // Update posterUser cache dependently
+    posterUser.posts = posterUser.posts.map((post) => {
+      if (post._id.toString() === postId) {
+        post.liked =
+          post.liked?.filter((l) => l.likedByEmail !== likedUser.email) || [];
       }
-    );
+      return post;
+    });
+    await client.json.set(posterKey, "$", posterUser);
+    await client.expire(posterKey, 600);
 
     io?.emit("postUnliked", {
       postId,
@@ -391,7 +481,10 @@ const UnlikePost = async (req, res) => {
       postOwner: posterUser.email,
     });
 
-    return res.status(200).json({ message: "Unliked successfully" });
+    return res.status(200).json({
+      message: "Unliked successfully",
+      post: posterUser.posts.find((p) => p._id.toString() === postId),
+    });
   } catch (error) {
     console.error("Unlike unsuccessful:", error);
     return handleError(res, error, "Failed to unlike post. Try again.", 500);
@@ -423,42 +516,50 @@ const CommentOnPost = async (req, res) => {
 
   try {
     const db = getDB();
+    const postOwnerKey = cacheUserKey(PostEmail);
+    const commenterKey = cacheUserKey(commentedUser);
+    const postKey = cachePostKey(postId);
 
-    const userDoc = await db.collection("users").findOne({
-      email: PostEmail,
-      "posts._id": new ObjectId(postId),
-    });
-
-    const commnterEmail = await db.collection("users").findOne({
-      email: commentedUser,
-    });
-    // console.log(commnterEmail);
-
-    if (!userDoc || !commnterEmail) {
-      return handleError(res, null, "Post not found", 404);
+    // Fetch post owner from Redis or DB
+    let postOwner = await client.json.get(postOwnerKey);
+    if (!postOwner) {
+      postOwner = await db.collection("users").findOne({ email: PostEmail });
+      if (!postOwner)
+        return handleError(res, null, "Post owner not found", 404);
+      await client.json.set(postOwnerKey, "$", postOwner);
+      await client.expire(postOwnerKey, 600);
     }
 
-    const post = userDoc.posts.find(
-      (post) => post._id && post._id.toString() === postId
-    );
+    // Fetch commenter from Redis or DB
+    let commenter = await client.json.get(commenterKey);
+    if (!commenter) {
+      commenter = await db
+        .collection("users")
+        .findOne({ email: commentedUser });
+      if (!commenter)
+        return handleError(res, null, "Commenting user not found", 404);
+      await client.json.set(commenterKey, "$", commenter);
+      await client.expire(commenterKey, 600);
+    }
 
-    // console.log(post);
-
+    // Find post in user's embedded posts
+    let post = postOwner.posts?.find((p) => p._id?.toString() === postId);
     if (!post) {
-      return handleError(res, null, "Post not found in user's posts", 404);
+      post = await db
+        .collection("posts")
+        .findOne({ _id: new ObjectId(postId) });
+      if (!post) return handleError(res, null, "Post not found", 404);
     }
 
-    const lastComment = post.comments?.slice(-1)[0];
     const now = new Date();
 
+    const lastComment = post.comments?.slice(-1)[0];
     if (
       lastComment &&
       lastComment.createdAt &&
-      commentedUser.email === lastComment.email
+      commenter.email === lastComment.email
     ) {
-      const lastTime = new Date(lastComment.createdAt);
-      const secondsSinceLast = (now - lastTime) / 1000;
-
+      const secondsSinceLast = (now - new Date(lastComment.createdAt)) / 1000;
       if (secondsSinceLast < COMMENT_COOLDOWN_SECONDS) {
         return handleError(
           res,
@@ -469,62 +570,81 @@ const CommentOnPost = async (req, res) => {
       }
     }
 
-    const comment = {
+    const newComment = {
       _id: new ObjectId(),
-      firstName: commnterEmail.firstName,
-      lastName: commnterEmail.lastName,
-      email: commnterEmail.email,
-      profileImage: commnterEmail.profileImage,
+      firstName: commenter.firstName,
+      lastName: commenter.lastName,
+      email: commenter.email,
+      profileImage: commenter.profileImage,
       commentText: trimmedComment,
       createdAt: now,
     };
 
-    // Add comment to embedded post in user's document
-    await db.collection("users").updateOne(
-      {
-        email: PostEmail,
-        "posts._id": new ObjectId(postId),
-      },
-      {
-        $addToSet: { "posts.$.comments": comment },
-      }
-    );
-
-    // Update the global posts collection
-    await db
-      .collection("posts")
-      .updateOne(
-        { _id: new ObjectId(postId) },
-        { $addToSet: { comments: comment } }
-      );
-
-    // Notify post owner
-    await db.collection("users").updateOne(
-      { email: PostEmail },
-      {
-        $addToSet: {
-          notifications: {
-            notif_id: new ObjectId(),
-            post_id: postId,
-            postOwnerEmail: userDoc.email,
-            firstName: commnterEmail.firstName,
-            lastName: commnterEmail.lastName,
-            profileImage: commnterEmail.profileImage,
-            postId: postId,
-            title: post.title,
-            userDid: "commented on your post",
-            createdAt: now,
+    // --- Update in MongoDB ---
+    await Promise.all([
+      db
+        .collection("users")
+        .updateOne(
+          { email: PostEmail, "posts._id": new ObjectId(postId) },
+          { $addToSet: { "posts.$.comments": newComment } }
+        ),
+      db
+        .collection("posts")
+        .updateOne(
+          { _id: new ObjectId(postId) },
+          { $addToSet: { comments: newComment } }
+        ),
+      db.collection("users").updateOne(
+        { email: PostEmail },
+        {
+          $addToSet: {
+            notifications: {
+              notif_id: new ObjectId(),
+              post_id: postId,
+              postOwnerEmail: postOwner.email,
+              firstName: commenter.firstName,
+              lastName: commenter.lastName,
+              profileImage: commenter.profileImage,
+              title: post.title,
+              userDid: "commented on your post",
+              createdAt: now,
+              read: false,
+            },
           },
-        },
-      }
-    );
+        }
+      ),
+    ]);
+
+    // --- Update Redis dependently ---
+    // Update post in postOwner cache
+    if (postOwner.posts) {
+      postOwner.posts = postOwner.posts.map((p) => {
+        if (p._id?.toString() === postId) {
+          p.comments = p.comments || [];
+          p.comments.push(newComment);
+        }
+        return p;
+      });
+      await client.json.set(postOwnerKey, "$", postOwner);
+      await client.expire(postOwnerKey, 600);
+    }
+
+    // Update separate post cache if exists
+    let cachedPost = await client.json.get(postKey);
+    if (cachedPost) {
+      cachedPost.comments = cachedPost.comments || [];
+      cachedPost.comments.push(newComment);
+      await client.json.set(postKey, "$", cachedPost);
+      await client.expire(postKey, 600);
+    }
 
     return res.status(200).json({
       message: "Comment added successfully",
-      commentId: comment._id,
+      commentId: newComment._id,
+      comment: newComment,
     });
   } catch (error) {
-    console.error("Commenting failed:", error);
+    console.error("❌ Commenting failed:", error);
     return handleError(res, error, "Failed to add comment", 500);
   }
 };
@@ -533,15 +653,27 @@ const activePosts = async (req, res) => {
   try {
     const db = getDB();
 
-    // Get page number and limit from query params (default: 1st page, 10 posts per page)
+    // Pagination setup
     const page = parseInt(req.query.page) || 1;
     const limit = parseInt(req.query.limit) || 10;
     const skip = (page - 1) * limit;
 
-    // Get total count of posts
+    // Redis cache key for paginated posts
+    const redisKey = `posts:page:${page}:limit:${limit}`;
+
+    // ✅ Step 1: Check Redis cache
+    const cachedPosts = await client.json.get(redisKey);
+    if (cachedPosts) {
+      return res.status(200).json({
+        source: "cache",
+        ...cachedPosts,
+      });
+    }
+
+    // ✅ Step 2: Fetch total post count from DB
     const postCount = await db.collection("posts").countDocuments();
 
-    // Fetch posts with pagination and sorting
+    // ✅ Step 3: Fetch posts with pagination
     const posts = await db
       .collection("posts")
       .find(
@@ -568,11 +700,21 @@ const activePosts = async (req, res) => {
       .limit(limit)
       .toArray();
 
-    res.status(200).json({
+    const result = {
       totalCount: postCount,
       totalPages: Math.ceil(postCount / limit),
       currentPage: page,
       data: posts,
+    };
+
+    // ✅ Step 4: Cache the result in Redis (expires in 5 minutes)
+    await client.json.set(redisKey, "$", result);
+    await client.expire(redisKey, 300);
+
+    // ✅ Step 5: Return the response
+    res.status(200).json({
+      source: "db",
+      ...result,
     });
   } catch (error) {
     console.error("GET /api/posts error:", error);
