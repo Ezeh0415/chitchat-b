@@ -3,7 +3,7 @@ const router = express.Router();
 const multer = require("multer");
 const AuthContr = require("../Controller/Auth-Contr");
 const ProfileContr = require("../Controller/Profile-contr");
-const postContr = require("../Controller/Posts-contr");
+const postContr = require("../Controller/Post-Contr");
 const FriendContr = require("../Controller/Friends-contr");
 const ChatContr = require("../Controller/Chat-Contr");
 
