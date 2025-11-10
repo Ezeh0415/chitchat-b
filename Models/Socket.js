@@ -1,29 +1,16 @@
 // socket.js
-const { Server } = require("socket.io");
-const { createAdapter } = require("@socket.io/redis-adapter");
-const { createClient } = require("redis");
-
 let io = null;
 
 module.exports = {
-  init: async (server) => {
+  init: (server) => {
+    const { Server } = require("socket.io");
     io = new Server(server, {
       cors: {
         origin: "*",
         methods: ["GET", "POST"],
-        credentials: true,
       },
     });
 
-    // ✅ Redis adapter setup
-    const pubClient = createClient({ url: process.env.REDIS_URL });
-    const subClient = pubClient.duplicate();
-
-    await Promise.all([pubClient.connect(), subClient.connect()]);
-
-    io.adapter(createAdapter(pubClient, subClient));
-
-    // ✅ Socket events
     io.on("connection", (socket) => {
       console.log("Client connected:", socket.id);
 
@@ -44,7 +31,6 @@ module.exports = {
 
     return io;
   },
-
   getIO: () => {
     if (!io) {
       throw new Error("Socket.io not initialized!");
