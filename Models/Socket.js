@@ -5,7 +5,7 @@ module.exports = {
   init: (server) => {
     const { Server } = require("socket.io");
     const allowedOrigins = [
-      "http://chitchat-f-production.up.railway.app",
+      "https://chitchat-f-production.up.railway.app",
       "http://localhost:3000",
       "http://127.0.0.1:3000",
     ];
