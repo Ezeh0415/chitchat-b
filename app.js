@@ -2,7 +2,7 @@ const { connectDB } = require("./Models/Db");
 const { server } = require("./server");
 const { init } = require("./Models/Socket");
 
-const PORT = process.env.PORT || 3000;
+const PORT = process.env.PORT || 8080;
 
 connectDB()
   .then(() => {
