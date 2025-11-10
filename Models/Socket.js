@@ -1,17 +1,41 @@
 // socket.js
+const { Server } = require("socket.io");
+const { createAdapter } = require("@socket.io/redis-adapter");
+const { createClient } = require("redis");
+
 let io = null;
 
 module.exports = {
-  init: (server) => {
-    const { Server } = require("socket.io");
+  init: async (server) => {
+    const allowedOrigins = [
+      "https://chitchat-f-production.up.railway.app",
+      "http://localhost:3000",
+      "http://127.0.0.1:3000",
+    ];
 
     io = new Server(server, {
       cors: {
-        origin: "*",
+        origin: function (origin, callback) {
+          if (!origin || allowedOrigins.includes(origin)) {
+            callback(null, true);
+          } else {
+            callback(new Error("Socket.IO - Not allowed by CORS"));
+          }
+        },
         methods: ["GET", "POST"],
+        credentials: true,
       },
     });
 
+    // ✅ Redis adapter setup
+    const pubClient = createClient({ url: process.env.REDIS_URL });
+    const subClient = pubClient.duplicate();
+
+    await Promise.all([pubClient.connect(), subClient.connect()]);
+
+    io.adapter(createAdapter(pubClient, subClient));
+
+    // ✅ Socket events
     io.on("connection", (socket) => {
       console.log("Client connected:", socket.id);
 
@@ -32,6 +56,7 @@ module.exports = {
 
     return io;
   },
+
   getIO: () => {
     if (!io) {
       throw new Error("Socket.io not initialized!");

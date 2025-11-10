@@ -1,5 +1,6 @@
 {
   "dependencies": {
+    "@socket.io/redis-adapter": "^8.3.0",
     "aws-sdk": "^2.1692.0",
     "bcrypt": "^6.0.0",
     "cloudinary": "^2.7.0",
