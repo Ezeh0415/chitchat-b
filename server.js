@@ -8,7 +8,11 @@ const Routes = require("./Routes/Routes");
 const app = express();
 const server = http.createServer(app);
 
-const allowedOrigins = ["http://localhost:3000", "http://127.0.0.1:3000"];
+const allowedOrigins = [
+  "http://chitchat-f-production.up.railway.app",
+  "http://localhost:3000",
+  "http://127.0.0.1:3000",
+];
 
 // CORS middleware for Express
 app.use(express.json({ limit: "70mb" }));
