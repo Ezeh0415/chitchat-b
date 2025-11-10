@@ -191,7 +191,7 @@ const postDisplay = async (req, res) => {
       if (post) {
         // Cache the post for future requests
         await client.json.set(postCacheKey, "$", post);
-        await client.expire(postCacheKey, 3600); // 1 hour TTL
+        await client.expire(postCacheKey, 4); // 1 hour TTL
       }
     }
 
@@ -314,7 +314,7 @@ const LikedPosts = async (req, res) => {
         .findOne({ _id: new ObjectId(likerId) });
       if (!likedUser) return handleError(res, null, "Liker not found", 404);
       await client.json.set(likerKey, "$", likedUser);
-      await client.expire(likerKey, 600);
+      await client.expire(likerKey, 3);
     }
 
     // Fetch poster with posts
@@ -323,7 +323,7 @@ const LikedPosts = async (req, res) => {
       posterUser = await db.collection("users").findOne({ email: posterEmail });
       if (!posterUser) return handleError(res, null, "Poster not found", 404);
       await client.json.set(posterKey, "$", posterUser);
-      await client.expire(posterKey, 600);
+      await client.expire(posterKey, 3);
     }
 
     if (posterEmail === likedUser.email) {
@@ -371,7 +371,7 @@ const LikedPosts = async (req, res) => {
       return post;
     });
     await client.json.set(posterKey, "$", posterUser);
-    await client.expire(posterKey, 600);
+    await client.expire(posterKey, 3);
 
     const post = posterUser.posts.find((p) => p._id.toString() === postId);
 
@@ -437,7 +437,7 @@ const UnlikePost = async (req, res) => {
         .findOne({ _id: new ObjectId(likerId) });
       if (!likedUser) return handleError(res, null, "Liker not found", 404);
       await client.json.set(likerKey, "$", likedUser);
-      await client.expire(likerKey, 600);
+      await client.expire(likerKey, 3);
     }
 
     // Fetch poster with posts
@@ -446,7 +446,7 @@ const UnlikePost = async (req, res) => {
       posterUser = await db.collection("users").findOne({ email: posterEmail });
       if (!posterUser) return handleError(res, null, "Poster not found", 404);
       await client.json.set(posterKey, "$", posterUser);
-      await client.expire(posterKey, 600);
+      await client.expire(posterKey, 3);
     }
 
     // Remove like in DB
@@ -473,7 +473,7 @@ const UnlikePost = async (req, res) => {
       return post;
     });
     await client.json.set(posterKey, "$", posterUser);
-    await client.expire(posterKey, 600);
+    await client.expire(posterKey, 3);
 
     io?.emit("postUnliked", {
       postId,
@@ -527,7 +527,7 @@ const CommentOnPost = async (req, res) => {
       if (!postOwner)
         return handleError(res, null, "Post owner not found", 404);
       await client.json.set(postOwnerKey, "$", postOwner);
-      await client.expire(postOwnerKey, 600);
+      await client.expire(postOwnerKey, 3);
     }
 
     // Fetch commenter from Redis or DB
@@ -539,7 +539,7 @@ const CommentOnPost = async (req, res) => {
       if (!commenter)
         return handleError(res, null, "Commenting user not found", 404);
       await client.json.set(commenterKey, "$", commenter);
-      await client.expire(commenterKey, 600);
+      await client.expire(commenterKey, 3);
     }
 
     // Find post in user's embedded posts
@@ -626,7 +626,7 @@ const CommentOnPost = async (req, res) => {
         return p;
       });
       await client.json.set(postOwnerKey, "$", postOwner);
-      await client.expire(postOwnerKey, 600);
+      await client.expire(postOwnerKey, 3);
     }
 
     // Update separate post cache if exists
@@ -635,7 +635,7 @@ const CommentOnPost = async (req, res) => {
       cachedPost.comments = cachedPost.comments || [];
       cachedPost.comments.push(newComment);
       await client.json.set(postKey, "$", cachedPost);
-      await client.expire(postKey, 600);
+      await client.expire(postKey, 3);
     }
 
     return res.status(200).json({
@@ -709,7 +709,7 @@ const activePosts = async (req, res) => {
 
     // ✅ Step 4: Cache the result in Redis (expires in 5 minutes)
     await client.json.set(redisKey, "$", result);
-    await client.expire(redisKey, 300);
+    await client.expire(redisKey, 3);
 
     // ✅ Step 5: Return the response
     res.status(200).json({
