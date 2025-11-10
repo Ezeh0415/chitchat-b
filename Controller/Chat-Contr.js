@@ -97,7 +97,7 @@ const chat = async (req, res) => {
       // Update cache immediately
       cachedMessages.Friends[0].chats.push(userChatMessage);
       await client.json.set(redisKey, "$", cachedMessages);
-      await client.expire(redisKey, 1); // Refresh TTL
+      await client.expire(redisKey, 500); // Refresh TTL
     }
 
     // 3. Update MongoDB in background
