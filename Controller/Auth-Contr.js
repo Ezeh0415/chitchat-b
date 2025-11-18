@@ -428,6 +428,8 @@ const getProfile = async (req, res) => {
           Dob: cached.Dob,
           city: cached.city,
           country: cached.country,
+          followers: cached.followers,
+          following: cached.following,
         },
       });
     }
@@ -455,6 +457,8 @@ const getProfile = async (req, res) => {
         Dob: user.Dob,
         city: user.city,
         country: user.country,
+        followers: user.followers,
+        following: user.following,
       },
     });
   } catch (error) {
@@ -482,13 +486,15 @@ const usersGetProfile = async (req, res) => {
           profileImage: cached.profileImage,
           posts: cached.posts,
           Friends: cached.Friends,
+          followers: cached.followers,
+          following: cached.following,
         },
       });
     }
     const user = await db.collection("users").findOne({ email });
 
     await client.json.set(redisKey, "$", user, { NX: true });
-    await client.expire(redisKey, 3600);
+    await client.expire(redisKey, 3);
 
     res.status(200).json({
       success: true,
@@ -500,6 +506,8 @@ const usersGetProfile = async (req, res) => {
         profileImage: user.profileImage,
         posts: user.posts,
         Friends: user.Friends,
+        followers: user.followers,
+        following: user.following,
       },
     });
   } catch (error) {

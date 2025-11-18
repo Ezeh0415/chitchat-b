@@ -6,6 +6,7 @@ const ProfileContr = require("../Controller/Profile-contr");
 const postContr = require("../Controller/Post-Contr");
 const FriendContr = require("../Controller/Friend-Contr");
 const ChatContr = require("../Controller/Chat-Contr");
+const FollowerContr = require("../Controller/Follower-Contr");
 
 const upload = multer({ dest: "uploads/" });
 
@@ -48,6 +49,9 @@ router.post(
   upload.single("image"),
   ProfileContr.profileSetup
 );
+
+router.post("/api/follow", FollowerContr.follow);
+router.post("/api/unfollow", FollowerContr.unfollow);
 // get section
 router.get("/api/getUserProfile/:email", AuthContr.getProfile);
 router.get("/api/usersGetProfile/:email", AuthContr.usersGetProfile);
