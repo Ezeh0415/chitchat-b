@@ -4,22 +4,10 @@ let io = null;
 module.exports = {
   init: (server) => {
     const { Server } = require("socket.io");
-    const allowedOrigins = [
-      "http://chitchat-f-production.up.railway.app",
-      "http://localhost:3000",
-      "http://127.0.0.1:3000",
-    ];
     io = new Server(server, {
       cors: {
-        origin: function (origin, callback) {
-          if (!origin || allowedOrigins.includes(origin)) {
-            callback(null, true);
-          } else {
-            callback(new Error("Socket.IO - Not allowed by CORS"));
-          }
-        },
+        origin: "*",
         methods: ["GET", "POST"],
-        credentials: true,
       },
     });
 

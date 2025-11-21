@@ -98,18 +98,17 @@ const signup = async (req, res) => {
       email: newUser.email,
     });
 
-    const RedisSet = await client.json.set(
-      `user:${newUser.email}`,
-      "$",
-      newUser,
-      { NX: true }
-    );
+    const redisKey = `user:${newUser.email}`;
+
+    const RedisSet = await client.json.set(redisKey, "$", newUser, {
+      NX: true,
+    });
 
     if (RedisSet === null) {
       return handleError(res, null, "User already exists", 409);
     }
 
-    await client.expire(`user.${newUser.email}`, 3600);
+    await client.expire(`user.${redisKey}`, 2);
 
     res.cookie("refreshToken", refreshToken, {
       httpOnly: true,
@@ -437,7 +436,7 @@ const getProfile = async (req, res) => {
     const user = await db.collection("users").findOne({ email });
 
     await client.json.set(redisKey, "$", user, { NX: true });
-    await client.expire(redisKey, 5);
+    await client.expire(redisKey, 2);
     res.status(200).json({
       success: true,
       user: {
