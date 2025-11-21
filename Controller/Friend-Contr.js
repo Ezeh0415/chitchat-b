@@ -118,8 +118,13 @@ const AddFriends = async (req, res) => {
       {
         $push: {
           FriendRequest: { $each: [friendRequest] },
-          FriendRequestsNotifications: {
-            $each: [{ ...notification, userDid: "sent you a friend request" }],
+          notifications: {
+            $each: [
+              {
+                ...notification,
+                userDid: `friend request was sent from ${adderUser.firstName} `,
+              },
+            ],
           },
         },
       }
@@ -130,7 +135,7 @@ const AddFriends = async (req, res) => {
       { email: AdderEmail },
       {
         $addToSet: {
-          FriendRequestsNotifications: {
+          notifications: {
             ...notification,
             userDid: "you sent a friend request",
           },
@@ -268,7 +273,7 @@ const AcceptFriendRequests = async (req, res) => {
         {
           $addToSet: {
             Friends: friendData,
-            FriendRequestsNotifications: notificationData,
+            notifications: notificationData,
           },
         }
       ),
@@ -284,7 +289,7 @@ const AcceptFriendRequests = async (req, res) => {
               lastName: userEmail.lastName,
               profileImage: userEmail.profileImage,
             },
-            FriendRequestsNotifications: {
+            notifications: {
               ...notificationData,
               email: userEmail.email,
               firstName: userEmail.firstName,
@@ -298,20 +303,20 @@ const AcceptFriendRequests = async (req, res) => {
       db.collection("users").findOneAndUpdate(
         {
           email: usersEmail,
-          "FriendRequestsNotifications._id": requestObjectId,
+          "notifications._id": requestObjectId,
         },
         {
           $pull: { FriendRequest: { _id: requestObjectId } },
-          $set: { "FriendRequestsNotifications.$.read": true },
+          $set: { "notifications.$.read": true },
         }
       ),
       // Mark notifications as read
       db.collection("users").findOneAndUpdate(
         {
           email: ReciverEmail,
-          "FriendRequestsNotifications._id": requestObjectId,
+          "notifications._id": requestObjectId,
         },
-        { $set: { "FriendRequestsNotifications.$.read": true } }
+        { $set: { "notifications.$.read": true } }
       ),
     ]);
 
@@ -424,9 +429,9 @@ const DeleteFriendRequests = async (req, res) => {
         { returnDocument: "after" }
       ),
       db.collection("users").findOneAndUpdate(
-        { email, "FriendRequestsNotifications._id": requestObjectId },
+        { email, "notifications._id": requestObjectId },
         {
-          $pull: { FriendRequestsNotifications: { _id: requestObjectId } },
+          $pull: { notifications: { _id: requestObjectId } },
         },
         { returnDocument: "after" }
       ),

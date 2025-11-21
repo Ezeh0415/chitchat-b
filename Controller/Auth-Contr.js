@@ -427,6 +427,8 @@ const getProfile = async (req, res) => {
           Dob: cached.Dob,
           city: cached.city,
           country: cached.country,
+          followers: cached.followers,
+          following: cached.following,
         },
       });
     }
@@ -454,6 +456,8 @@ const getProfile = async (req, res) => {
         Dob: user.Dob,
         city: user.city,
         country: user.country,
+        followers: user.followers,
+        following: user.following,
       },
     });
   } catch (error) {
@@ -481,6 +485,8 @@ const usersGetProfile = async (req, res) => {
           profileImage: cached.profileImage,
           posts: cached.posts,
           Friends: cached.Friends,
+          followers: cached.followers,
+          following: cached.following,
         },
       });
     }
@@ -499,6 +505,8 @@ const usersGetProfile = async (req, res) => {
         profileImage: user.profileImage,
         posts: user.posts,
         Friends: user.Friends,
+        followers: user.followers,
+        following: user.following,
       },
     });
   } catch (error) {
