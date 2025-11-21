@@ -635,7 +635,7 @@ const CommentOnPost = async (req, res) => {
       cachedPost.comments = cachedPost.comments || [];
       cachedPost.comments.push(newComment);
       await client.json.set(postKey, "$", cachedPost);
-      await client.expire(postKey, 600);
+      await client.expire(postKey, 3);
     }
 
     return res.status(200).json({

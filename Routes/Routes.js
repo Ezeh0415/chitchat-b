@@ -59,6 +59,7 @@ router.get("/api/users", FriendContr.getRegisterdUser);
 router.get("/api/posts", postContr.activePosts);
 router.get("/api/friendRequests/:id", FriendContr.FriendRequests);
 
+
 // delete section
 router.delete("/api/deleteFriendRequest/:id", FriendContr.DeleteFriendRequests);
 

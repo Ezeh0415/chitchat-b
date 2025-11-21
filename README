@@ -1,0 +1,133 @@
+const express = require('express');
+const session = require('express-session');
+const passport = require('passport');
+const GoogleStrategy = require('passport-google-oauth20').Strategy;
+
+require('dotenv').config();
+
+const app = express();
+
+// ------------------ Sessions ------------------
+app.use(session({
+secret: "your-session-secret",
+resave: false,
+saveUninitialized: false
+}));
+
+app.use(passport.initialize());
+app.use(passport.session());
+
+// ------------------ Passport Setup ------------------
+passport.use(new GoogleStrategy({
+clientID: process.env.GOOGLE_CLIENT_ID,
+clientSecret: process.env.GOOGLE_CLIENT_SECRET,
+callbackURL: "/auth/google/callback"
+},
+(accessToken, refreshToken, profile, done) => {
+// Here you would save/find the user in DB
+return done(null, profile);
+}
+));
+
+passport.serializeUser((user, done) => {
+done(null, user);
+});
+
+passport.deserializeUser((user, done) => {
+done(null, user);
+});
+
+// ------------------ Routes ------------------
+
+// Start Google login
+app.get('/auth/google',
+passport.authenticate('google', { scope: ['profile', 'email'] })
+);
+
+// Redirect URI
+app.get('/auth/google/callback',
+passport.authenticate('google', {
+failureRedirect: '/login'
+}),
+(req, res) => {
+res.redirect('/profile');
+}
+);
+
+// Protected route
+app.get('/profile', (req, res) => {
+if (!req.isAuthenticated()) return res.redirect('/login');
+res.send(`Hello, ${req.user.displayName}!`);
+});
+
+// Logout
+app.get('/logout', (req, res) => {
+req.logout(() => {
+res.redirect('/');
+});
+});
+
+app.listen(3000, () => console.log("Server running on http://localhost:3000"));
+
+// ❗ Important Edge Case
+
+// A user may have signed up manually earlier (email + password),
+// but now is signing in with Google for the first time.
+
+// In that case:
+
+// The system will find the user by email
+
+// But googleId is missing — you should add it.
+
+// Fix:
+// if (user && !user.googleId) {
+// user.googleId = googleId;
+// user.save();
+// }
+
+// This connects the two accounts.
+
+
+passport.use(new GoogleStrategy({
+    clientID: process.env.GOOGLE_CLIENT_ID,
+    clientSecret: process.env.GOOGLE_CLIENT_SECRET,
+    callbackURL: "/auth/google/callback"
+  }, 
+  async (accessToken, refreshToken, profile, done) => {
+
+    const googleId = profile.id;
+    const email = profile.emails[0].value;
+
+    let user = await User.findOne({ email });
+
+    // CASE 1: User exists — login
+    if (user) {
+      // If account created manually, attach googleId
+      if (!user.googleId) {
+        user.googleId = googleId;
+        await user.save();
+      }
+
+      return done(null, user);
+    }
+
+    // CASE 2: New user — signup
+    const newUser = await User.create({
+      googleId,
+      email,
+      firstName: profile.name.givenName || null,
+      lastName: profile.name.familyName || null,
+      password: null,       // no password for google signup
+      otp: null,
+      otpExpire: null,
+      createdAt: new Date(),
+      profileImage: profile.photos?.[0]?.value || 
+                    "https://cdn-icons-png.flaticon.com/512/149/149071.png",
+      city: null,
+      country: null
+    });
+
+    return done(null, newUser);
+  }
+));
